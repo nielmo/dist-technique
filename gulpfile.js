@@ -1,182 +1,173 @@
-var autoprefixer       = require('gulp-autoprefixer');
-var beeper             = require('beeper');
-var browserSync        = require('browser-sync');
-var cache              = require('gulp-cache');
-var cleanCSS           = require('gulp-clean-css');
-var gconcat            = require('gulp-concat');
-var gulp               = require('gulp');
-var gutil              = require('gulp-util');
-var imagemin           = require('gulp-imagemin');
-var notify             = require('gulp-notify');
-var plumber            = require('gulp-plumber');
-var pug                = require('gulp-pug');
-var rename             = require("gulp-rename");
-var sass               = require('gulp-sass');
-var sourcemaps         = require('gulp-sourcemaps');
-var uglify             = require('gulp-uglify');
-// sudo npm install gulp-uglify browser-sync gulp-plumber gulp-autoprefixer gulp-sass gulp-pug gulp-imagemin gulp-cache gulp-clean-css gulp-sourcemaps gulp-concat beeper gulp-util gulp-rename gulp-notify --save-dev
-var jsVendorFiles      = [];             // Holds the js vendor files to be concatenated
-var myJsFiles          = ['js/*.js'];    // Holds the js files to be concatenated
-var fs                 = require('fs');  // ExistsSync var to check if font directory patch exist
-var bowerDirectory     = getBowerDirectory();
-var bootstrapJSPath    = bowerDirectory + "bootstrap/dist/js/bootstrap.min.js";
-var bootstrapCSSPath   = bowerDirectory + "bootstrap/dist/css/bootstrap.min.css";
-var bootstrapFontsPath = bowerDirectory + "bootstrap/dist/fonts/**.*";
-var jqueryPath         = bowerDirectory + "jquery/dist/jquery.min.js";
-var bootstrapExist     = false;
-var onError            = function(err) { // Custom error msg with beep sound and text color
-    notify.onError({
-      title:    "Gulp error in " + err.plugin,
-      message:  err.toString()
-    })(err);
-    beeper(3);
-    this.emit('end');
-    gutil.log(gutil.colors.red(err));
-};
+var gulp = require('gulp'),
+    pug = require('gulp-pug'),
+    rename = require('gulp-rename'),
+    sass = require('gulp-sass'),
+    watch = require('gulp-watch'),
+    htmlbeautify = require('gulp-html-beautify'),
+    concat = require('gulp-concat'),
+    plumber = require('gulp-plumber');
+    cleanCSS = require('gulp-clean-css');
+    sourcemaps = require('gulp-sourcemaps');
+    notify = require('gulp-notify');
+    gutil = require('gulp-util');
+    beeper = require('beeper');
+    flatten = require('gulp-flatten');
+    imagemin = require('gulp-imagemin');
+    cache = require('gulp-cache');
+    uglify = require('gulp-uglify');
+    htmlclean = require('gulp-htmlclean');
 
-function getBowerDirectory() {
-  var bowerComponents = "./bower_components";
-  if(fs.existsSync('.bowerrc')) {
-    var bowerrc = JSON.parse(fs.readFileSync('.bowerrc').toString());
-    return bowerrc.directory;
-  } else if (fs.existsSync(bowerComponents)) {
-    return bowerComponents + '/';
-  } else {
-    return '';
-  }
-}
+    onError = function (err) { // Custom error msg with beep sound and text color
+        notify.onError({
+          title:    "Gulp error in " + err.plugin,
+          message:  err.toString()
+        })(err);
+        beeper(3);
+        this.emit('end');
+        gutil.log(gutil.colors.red(err));
+    };
 
-function setupJquery(data) {
-  var jqueryCDN = '    script(src="https://code.jquery.com/jquery-{{JQUERY_VERSION}}.min.js" integrity="{{JQUERY_SRI_HASH}}" crossorigin="anonymous")';
-  var jqueryLocalFallback = "    <script>window.jQuery || document.write(" + "'<script src=" + '"js/vendor/jquery/dist/jquery/jquery.min.js"' + "><\\/script>')</script>";
-  gulp.src(jqueryPath)
-  .pipe(gulp.dest('./build/js/vendor/jquery/dist/jquery'));
-  data.splice(data.length, 0, jqueryCDN);
-  data.splice(data.length, 0, jqueryLocalFallback);
-}
+    paths = {
+      scr: 'src/**/*',
+      srcPug: 'src/*.pug',
+      srcSCSS: 'src/**/*.scss',
+      srcImg: 'src/img/*',
+      srcJS: 'src/js/*.js',
+      srcJSPlugins: 'src/js/plugins/*.js',
 
-function setupBootstrap(data) {
-  bootstrapExist = true;
-  setupJquery(data);
-  var bootstrapCSSCDN = '    link(href="https://maxcdn.bootstrapcdn.com/bootstrap/{{BOOTSTRAP_VERSION}}/css/bootstrap.min.css", rel="stylesheet", integrity="{{BOOTSTRAP_SRI_HASH}}", crossorigin="anonymous")';
-  var bootstrapCSSLocalFallback = '    div(id="bootstrapCssTest" class="hidden")\n' + "    <script>$(function(){if ($('#bootstrapCssTest').is(':visible')){$('head').prepend('<link rel=" + '"stylesheet" href="/js/vendor/bootstrap/dist/css/bootstrap.min.css">' + "');}});</script>";
-  var bootstrapJSCDN = '    script(src="https://maxcdn.bootstrapcdn.com/bootstrap/{{BOOTSTRAP_VERSION}}/js/bootstrap.min.js", integrity="{{BOOTSTRAP_SRI_HASH}}", crossorigin="anonymous")';
-  var bootstrapJSLocalFallback = "    <script>if(typeof($.fn.modal) === 'undefined'" + ") {document.write('<script src=" + '"/js/vendor/bootstrap/dist/js/bootstrap.min.js"' + "><\\/script>')}</script>";
-  gulp.src(bootstrapFontsPath)
-  .pipe(gulp.dest('./build/js/vendor/bootstrap/dist/fonts'));
-  gulp.src(bootstrapJSPath)
-  .pipe(gulp.dest('./build/js/vendor/bootstrap/dist/js'));
-  gulp.src(bootstrapCSSPath)
-  .pipe(gulp.dest('./build/js/vendor/bootstrap/dist/css'));
+      tmpHtml: 'tmp/',
+      tmpCSS: 'tmp/css/',
+      tmpImg: 'tmp/img/',
+      tmpJS: 'tmp/js/',
+      tmpJSPlugins: 'tmp/js/plugins',
 
-  data.splice(8, 0, bootstrapCSSCDN);
-  data.splice(data.length, 0, bootstrapJSCDN);
-  data.splice(data.length, 0, bootstrapJSLocalFallback);
-  data.splice(data.length, 0, bootstrapCSSLocalFallback);
-}
+      distHtml: 'dist/',
+      distCSS: 'dist/css/',
+      distImg: 'dist/img/',
+      distJS: 'dist/js/',
+      distJSPlugins: 'dist/js/plugins',
+    },
 
-function findKeyText(data, txt) {
-  for (var i = 0; i < data.length; i++) {
-    if(data[i].indexOf(txt) > -1) {
-      return true;
+    beautifyOptions = {
+      "indent_size": 4,
+      "indent_char": " ",
+      "eol": "\n",
+      "indent_level": 0,
+      "indent_with_tabs": false,
+      "preserve_newlines": true,
+      "max_preserve_newlines": 10,
+      "jslint_happy": false,
+      "space_after_anon_function": false,
+      "brace_style": "collapse",
+      "keep_array_indentation": false,
+      "keep_function_indentation": false,
+      "space_before_conditional": true,
+      "break_chained_methods": false,
+      "eval_code": false,
+      "unescape_strings": false,
+      "wrap_line_length": 0,
+      "wrap_attributes": "auto",
+      "wrap_attributes_indent_size": 4,
+      "end_with_newline": true
     }
-  }
-  return false;
-}
 
-gulp.task('styles', function() {
-  gulp.src('styles/*.scss')
-  .pipe(plumber({ errorHandler: onError }))
-  .pipe(sourcemaps.init())
-  .pipe(sass({indentedSyntax: true}))
-  .pipe(autoprefixer({
-    browsers: ['last 5 versions'],
-    cascade: false}))
-  .pipe(cleanCSS())
-  .pipe(sourcemaps.write())
-  .pipe(rename({ suffix: '.min'}))
-  .pipe(gulp.dest('build/css'));
+gulp.task('tmpPug', function () {
+  return gulp.src(paths.srcPug)
+    .pipe(pug())
+    .pipe(plumber({ errorHandler: onError }))
+    .pipe(htmlbeautify(beautifyOptions))
+    .pipe(rename({
+      extname: '.html'
+    }))
+
+    .pipe(gulp.dest(paths.tmpHtml));
 });
 
-gulp.task('templates', function() {
-  gulp.src('./*.pug')
-  .pipe(plumber({ errorHandler: onError }))
-  .pipe(pug())
-  .pipe(gulp.dest('build/'));
+gulp.task('tmpCss', function () {
+  gulp.src(paths.srcSCSS)
+    .pipe(sass({indentedSyntax: true}))
+    .pipe(plumber({ errorHandler: onError }))
+    .pipe(cleanCSS())
+    .pipe(rename({ suffix: '.min'}))
+    .pipe(flatten())
+    .pipe(gulp.dest(paths.tmpCSS));
 });
 
-gulp.task('scripts', function() {
-  return gulp.src(myJsFiles.concat(jsVendorFiles))
-  .pipe(plumber({ errorHandler: onError }))
-  .pipe(sourcemaps.init())
-  .pipe(gconcat('bundle.js'))
-  .pipe(uglify())
-  .pipe(sourcemaps.write())
-  .pipe(rename({ suffix: '.min'}))
-  .pipe(gulp.dest('build/js'));
-});
-
-gulp.task('images', function() {
-  gulp.src('img/**/*')
+gulp.task('tmpImg', function () {
+  gulp.src(paths.srcImg)
   .pipe(cache(imagemin({
     optimizationLevel: 3,
     progressive: true,
     interlaced: true})))
-  .pipe(gulp.dest('build/img/'));
+  .pipe(gulp.dest(paths.tmpImg));
 });
 
-gulp.task('setup-src', function() {
-  var data = fs.readFileSync('./index.pug').toString().split("\n");
-
-  if(data[data.length - 1] === '') {
-    data.pop();
-  }
-
-  if(data[data.length - 1].indexOf('script(src="js/bundle.min.js")') > -1) {
-    data.pop();
-  }
-
-  if(bowerDirectory) {
-    if(fs.existsSync(bootstrapJSPath) && !findKeyText(data, 'bootstrap.min.css')) {
-      setupBootstrap(data);
-    }
-
-    if(fs.existsSync(jqueryPath) && !bootstrapExist  && !findKeyText(data, 'jquery.min.js')) {
-      setupJquery(data);
-    }
-  }
-
-  if(!findKeyText(data, 'bundle.min.js')) {
-    data.splice(data.length, 0, '    script(src="js/bundle.min.js")');
-  }
-
-  var text = data.join("\n");
-  fs.writeFile('./index.pug', text, function (err) {
-    if (err) throw err;
-  });
+gulp.task('tmpJS', function() {
+  return gulp.src(paths.srcJS)
+  .pipe(uglify())
+  .pipe(rename({ suffix: '.min'}))
+  .pipe(gulp.dest(paths.tmpJS));
 });
 
-gulp.task('default', function() {
-  console.log("Use 'gulp setup' command to initialize the project files");
+gulp.task('tmpPluginJS', function () {
+  return gulp.src(paths.srcJSPlugins)
+    .pipe(gulp.dest(paths.tmpJSPlugins));
 });
 
-gulp.task('setup', function() {
-  gulp.start('styles', 'templates', 'scripts', 'images', 'setup-src');
+gulp.task('watch', function () {
+  gulp.watch(
+    [paths.srcPug, paths.srcSCSS, paths.srcImg, paths.srcJS, paths.srcJSPlugins], 
+    ['tmpPug', 'tmpCss', 'tmpImg', 'tmpJS', 'tmpPluginJS']);
 });
 
-gulp.task('watch', function() {
-  gulp.watch('styles/**/*',                        ['styles']);
-  gulp.watch(['templates/**/*', './*.pug'],        ['templates']);
-  gulp.watch('js/*.js',                            ['scripts']);
-  gulp.watch('img/**/*',                           ['images']);
-
-// init server
-  browserSync.init({
-    server: {
-      proxy: "local.build",
-      baseDir: "build/"
-    }
-  });
-
-  gulp.watch(['build/**'], browserSync.reload);
+gulp.task('default', function () {
+  gulp.start('watch');
 });
+
+// BUILD SITE`
+gulp.task('distPug', function () {
+  return gulp.src(paths.srcPug)
+    .pipe(pug())
+    .pipe(plumber({ errorHandler: onError }))
+    .pipe(htmlclean())
+    .pipe(htmlbeautify(beautifyOptions))
+    .pipe(rename({
+      extname: '.html'
+    }))
+
+    .pipe(gulp.dest(paths.distHtml));
+});
+
+gulp.task('distCss', function () {
+  gulp.src(paths.srcSCSS)
+    .pipe(sass({ indentedSyntax: true }))
+    .pipe(plumber({ errorHandler: onError }))
+    .pipe(cleanCSS())
+    .pipe(rename({ suffix: '.min' }))
+    .pipe(flatten())
+    .pipe(gulp.dest(paths.distCSS));
+});
+
+gulp.task('distImg', function () {
+  gulp.src(paths.srcImg)
+    .pipe(cache(imagemin({
+      optimizationLevel: 3,
+      progressive: true,
+      interlaced: true
+    })))
+    .pipe(gulp.dest(paths.distImg));
+});
+
+gulp.task('distJS', function () {
+  return gulp.src(paths.srcJS)
+    .pipe(uglify())
+    .pipe(rename({ suffix: '.min' }))
+    .pipe(gulp.dest(paths.distJS));
+});
+
+gulp.task('distJSPlugins', function () {
+  return gulp.src(paths.srcJSPlugins)
+    .pipe(gulp.dest(paths.distJSPlugins));
+});
+
+gulp.task('build', ['distPug', 'distCss', 'distImg', 'distJS', 'distJSPlugins']);
