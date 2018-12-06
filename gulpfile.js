@@ -16,6 +16,7 @@ var gulp = require('gulp'),
     cache = require('gulp-cache');
     uglify = require('gulp-uglify');
     htmlclean = require('gulp-htmlclean');
+    sassglob = require('gulp-sass-glob')
 
     onError = function (err) { // Custom error msg with beep sound and text color
         notify.onError({
@@ -85,6 +86,7 @@ gulp.task('tmpPug', function () {
 
 gulp.task('tmpCss', function () {
   gulp.src(paths.srcSCSS)
+    .pipe(sassglob())
     .pipe(sass({indentedSyntax: true}))
     .pipe(plumber({ errorHandler: onError }))
     .pipe(cleanCSS())
@@ -140,6 +142,7 @@ gulp.task('distPug', function () {
 
 gulp.task('distCss', function () {
   gulp.src(paths.srcSCSS)
+    .pipe(sassglob())
     .pipe(sass({ indentedSyntax: true }))
     .pipe(plumber({ errorHandler: onError }))
     .pipe(cleanCSS())
